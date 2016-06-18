@@ -31,6 +31,7 @@ object RunLogisticRegressionWithSGDBinary {
 
 		val options = new Options()
 		options.addOption("t", "param-tune", false, "進行參數調校");
+		options.addOption("i", "input", true, "輸入檔案");
 
 		val cmdParser = new DefaultParser();
 		var cmdLine: CommandLine = null;
@@ -40,13 +41,20 @@ object RunLogisticRegressionWithSGDBinary {
 		catch {
 			case ex: ParseException => {
 				printHelp(options);
+				System.exit(1);
 			}
+		}
+		
+		if(!cmdLine.hasOption('i')){
+			logger.fatal("沒有提供輸入檔案路徑");
+			printHelp(options);
+			System.exit(1);
 		}
 
 		val sc = new SparkContext(new SparkConf().setAppName("RDF").setMaster("local[4]"))
 		logger.info("RunLogisticRegressionWithSGDBinary")
 		logger.info("==========資料準備階段===============")
-		val (trainData, validationData, testData, categoriesMap) = PrepareData(sc)
+		val (trainData, validationData, testData, categoriesMap) = PrepareData(sc,cmdLine.getOptionValue('i'))
 		trainData.persist();
 		validationData.persist();
 		testData.persist()
@@ -72,10 +80,10 @@ object RunLogisticRegressionWithSGDBinary {
 		trainData.unpersist(); validationData.unpersist(); testData.unpersist()
 	}
 
-	def PrepareData(sc: SparkContext): (RDD[LabeledPoint], RDD[LabeledPoint], RDD[LabeledPoint], Map[String, Int]) = {
+	def PrepareData(sc: SparkContext,inputFilePath: String): (RDD[LabeledPoint], RDD[LabeledPoint], RDD[LabeledPoint], Map[String, Int]) = {
 		//----------------------1.匯入轉換資料-------------
 		logger.info("開始匯入資料...")
-		val rawDataWithHeader = sc.textFile("data/train.tsv")
+		val rawDataWithHeader = sc.textFile(inputFilePath)
 		val rawData = rawDataWithHeader.mapPartitionsWithIndex { (idx, iter) => if (idx == 0) iter.drop(1) else iter }
 		val lines = rawData.map(_.split("\t"))
 		logger.info("共計：" + lines.count.toString() + "筆")
