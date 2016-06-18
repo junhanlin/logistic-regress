@@ -18,9 +18,9 @@ import org.apache.log4j.BasicConfigurator
 import org.apache.commons.cli.Options
 import org.apache.commons.cli.CommandLineParser
 import org.apache.commons.cli.ParseException
-import org.apache.commons.cli.DefaultParser
 import org.apache.commons.cli.CommandLine
 import org.apache.commons.cli.HelpFormatter
+import org.apache.commons.cli.PosixParser
 
 object RunLogisticRegressionWithSGDBinary {
 
@@ -33,7 +33,7 @@ object RunLogisticRegressionWithSGDBinary {
 		options.addOption("t", "param-tune", false, "進行參數調校");
 		options.addOption("i", "input", true, "輸入檔案");
 
-		val cmdParser = new DefaultParser();
+		val cmdParser = new PosixParser();
 		var cmdLine: CommandLine = null;
 		try {
 			cmdLine = cmdParser.parse(options, args);
