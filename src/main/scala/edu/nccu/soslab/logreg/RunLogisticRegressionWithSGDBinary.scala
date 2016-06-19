@@ -30,6 +30,7 @@ object RunLogisticRegressionWithSGDBinary {
 		BasicConfigurator.configure()
 
 		val options = new Options()
+		options.addOption("s", "single-node", false, "是否為單機模式");
 		options.addOption("t", "param-tune", false, "進行參數調校");
 		options.addOption("i", "input", true, "輸入檔案");
 
@@ -50,8 +51,17 @@ object RunLogisticRegressionWithSGDBinary {
 			printHelp(options);
 			System.exit(1);
 		}
-
-		val sc = new SparkContext(new SparkConf().setAppName("RDF").setMaster("local[4]"))
+		
+		
+		val sparkConf = new SparkConf().setAppName("RDF");
+		
+		if(cmdLine.hasOption('s'))
+		{
+			sparkConf.setMaster("local[4]")
+		}
+		
+		
+		val sc = new SparkContext(sparkConf)
 		logger.info("RunLogisticRegressionWithSGDBinary")
 		logger.info("==========資料準備階段===============")
 		val (trainData, validationData, testData, categoriesMap) = PrepareData(sc,cmdLine.getOptionValue('i'))
