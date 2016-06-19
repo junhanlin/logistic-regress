@@ -26,6 +26,7 @@ import org.apache.hadoop.fs.Path
 object RunLogisticRegressionWithSGDBinary {
 
 	val logger = Logger.getLogger(RunLogisticRegressionWithSGDBinary.getClass);
+
 	def main(args: Array[String]) {
 
 		BasicConfigurator.configure()
@@ -58,14 +59,14 @@ object RunLogisticRegressionWithSGDBinary {
 			printHelp(options);
 			System.exit(1);
 		}
-		
-		val trainTSV = new Path(cmdLine.getOptionValue('i'),"train.tsv");
-		val testTSV = new Path(cmdLine.getOptionValue('i'),"test.tsv");
+
+		val trainTSV = new Path(cmdLine.getOptionValue('i'), "train.tsv");
+		val testTSV = new Path(cmdLine.getOptionValue('i'), "test.tsv");
 		val outputDir = new Path(cmdLine.getOptionValue('o'));
-		
-		logger.info("train.tsv 位置:"+trainTSV.toString())
-		logger.info("test.tsv 位置:"+testTSV.toString())
-		logger.info("輸出資料夾位置:"+outputDir)
+
+		logger.info("train.tsv 位置:" + trainTSV.toString())
+		logger.info("test.tsv 位置:" + testTSV.toString())
+		logger.info("輸出資料夾位置:" + outputDir)
 
 		val sparkConf = new SparkConf().setAppName("RDF");
 
@@ -77,10 +78,7 @@ object RunLogisticRegressionWithSGDBinary {
 		logger.info("RunLogisticRegressionWithSGDBinary")
 		logger.info("==========資料準備階段===============")
 		val (trainData, validationData, testData, categoriesMap) = PrepareData(sc, trainTSV)
-		trainData.persist();
-		validationData.persist();
-		testData.persist()
-		logger.info("==========訓練評估階段===============")
+		trainData.persist(); validationData.persist(); testData.persist()
 
 		if (cmdLine.hasOption('t')) {
 			val model = parametersTunning(trainData, validationData)
@@ -88,29 +86,29 @@ object RunLogisticRegressionWithSGDBinary {
 			val auc = evaluateModel(model, testData)
 			logger.info("使用testata測試最佳模型,結果 AUC:" + auc)
 			logger.info("==========預測資料===============")
-			PredictData(sc, model, categoriesMap,testTSV,outputDir)
+			PredictData(sc, model, categoriesMap, testTSV, outputDir)
 		}
 		else {
 			val model = trainEvaluate(trainData, validationData)
 			logger.info("==========測試階段===============")
 			val auc = evaluateModel(model, testData)
-			logger.info("使用testata測試最佳模型,結果 AUC:" + auc)
+			logger.info("使用testata測試模型,結果 AUC:" + auc)
 			logger.info("==========預測資料===============")
-			PredictData(sc, model, categoriesMap,testTSV,outputDir)
+			PredictData(sc, model, categoriesMap, testTSV, outputDir)
 		}
 
-		trainData.unpersist(); 
-		validationData.unpersist(); 
-		testData.unpersist()
-		
+		trainData.unpersist(); validationData.unpersist(); testData.unpersist()
+
 	}
 
 	def PrepareData(sc: SparkContext, dataTSVPath: Path): (RDD[LabeledPoint], RDD[LabeledPoint], RDD[LabeledPoint], Map[String, Int]) = {
 		//----------------------1.匯入轉換資料-------------
 		logger.info("開始匯入資料...")
-		val rawDataWithHeader = sc.textFile(dataTSVPath.toString())
-		val rawData = rawDataWithHeader.mapPartitionsWithIndex { (idx, iter) => if (idx == 0) iter.drop(1) else iter }
-		val lines = rawData.map(_.split("\t"))
+		val rawDataWithHeader: RDD[String] = sc.textFile(dataTSVPath.toString())
+		val rawData: RDD[String] = rawDataWithHeader.mapPartitionsWithIndex {
+			(idx, iter) => if (idx == 0) iter.drop(1) else iter
+		}
+		val lines: RDD[Array[String]] = rawData.map(_.split("\t"))
 		logger.info("共計：" + lines.count.toString() + "筆")
 		//----------------------2.建立訓練評估所需資料 RDD[LabeledPoint]-------------
 		val categoriesMap: Map[String, Int] = lines.map(fields => fields(3)).distinct.collect.zipWithIndex.toMap
@@ -129,18 +127,19 @@ object RunLogisticRegressionWithSGDBinary {
 		val stdScaler = new StandardScaler(withMean = true, withStd = true).fit(featuresData)
 		val scaledRDD = labelpointRDD.map(labelpoint => LabeledPoint(labelpoint.label, stdScaler.transform(labelpoint.features)))
 		//----------------------3.以隨機方式將資料分為3部份並且回傳-------------
-
 		val Array(trainData, validationData, testData) = scaledRDD.randomSplit(Array(0.8, 0.1, 0.1))
 		logger.info("將資料分trainData:" + trainData.count() + "   validationData:" + validationData.count() + "   testData:" + testData.count())
 		return (trainData, validationData, testData, categoriesMap)
 	}
 
-	def PredictData(sc: SparkContext, model: LogisticRegressionModel, categoriesMap: Map[String, Int],testTSVPath : Path,outputDirPath : Path): Unit = {
+	def PredictData(sc: SparkContext, model: LogisticRegressionModel, categoriesMap: Map[String, Int], testTSVPath: Path, outputDirPath: Path): Unit = {
 
 		//----------------------1.匯入轉換資料-------------
 		logger.info("開始匯入資料...")
 		val rawDataWithHeader = sc.textFile(testTSVPath.toString())
-		val rawData = rawDataWithHeader.mapPartitionsWithIndex { (idx, iter) => if (idx == 0) iter.drop(1) else iter }
+		val rawData = rawDataWithHeader.mapPartitionsWithIndex {
+			(idx, iter) => if (idx == 0) iter.drop(1) else iter
+		}
 		val lines = rawData.map(_.split("\t"))
 		logger.info("共計：" + lines.count.toString() + "筆")
 		//----------------------2.建立訓練評估所需資料 RDD[LabeledPoint]-------------
@@ -189,6 +188,7 @@ object RunLogisticRegressionWithSGDBinary {
 		val duration = new Duration(startTime, endTime)
 		(model, duration.getMillis())
 	}
+
 	def evaluateModel(model: LogisticRegressionModel, validationData: RDD[LabeledPoint]): (Double) = {
 
 		val scoreAndLabels = validationData.map { data =>
@@ -199,6 +199,7 @@ object RunLogisticRegressionWithSGDBinary {
 		val AUC = Metrics.areaUnderROC
 		(AUC)
 	}
+
 	def testModel(model: LogisticRegressionModel, testData: RDD[LabeledPoint]): Unit = {
 		val auc = evaluateModel(model, testData)
 		logger.info("使用testata測試,結果 AUC:" + auc)
@@ -213,12 +214,7 @@ object RunLogisticRegressionWithSGDBinary {
 	}
 
 	def parametersTunning(trainData: RDD[LabeledPoint], validationData: RDD[LabeledPoint]): LogisticRegressionModel = {
-		logger.info("-----評估 numIterations參數使用 5, 10, 20,60,100---------")
-		evaluateParameter(trainData, validationData, "numIterations", Array(5, 15, 20, 60, 100), Array(100), Array(1))
-		logger.info("-----評估stepSize參數使用 (10,50,100)---------")
-		evaluateParameter(trainData, validationData, "stepSize", Array(100), Array(10, 50, 100, 200), Array(1))
-		logger.info("-----評估miniBatchFraction參數使用 (0.5,0.8,1)---------")
-		evaluateParameter(trainData, validationData, "miniBatchFraction", Array(100), Array(100), Array(0.5, 0.8, 1))
+
 		logger.info("-----所有參數交叉評估找出最好的參數組合---------")
 		val bestModel = evaluateAllParameter(trainData, validationData, Array(1, 3, 5, 10),
 			Array(10, 50, 100), Array(0.5, 0.8, 1))
@@ -226,7 +222,7 @@ object RunLogisticRegressionWithSGDBinary {
 	}
 
 	def evaluateParameter(trainData: RDD[LabeledPoint], validationData: RDD[LabeledPoint],
-		evaluateParameter: String, numIterationsArray: Array[Int], stepSizeArray: Array[Double], miniBatchFractionArray: Array[Double]) =
+		evaluateParameter: String, numIterationsArray: Array[Int], stepSizeArray: Array[Double], miniBatchFractionArray: Array[Double]): Unit =
 		{
 			var dataBarChart = new DefaultCategoryDataset()
 			var dataLineChart = new DefaultCategoryDataset()
@@ -247,7 +243,11 @@ object RunLogisticRegressionWithSGDBinary {
 			//      Chart.plotBarLineChart("LogisticRegressionWithSGD evaluations " + evaluateParameter, evaluateParameter, "AUC", 0.48, 0.7, "Time", dataBarChart, dataLineChart)
 		}
 
-	def evaluateAllParameter(trainData: RDD[LabeledPoint], validationData: RDD[LabeledPoint], numIterationsArray: Array[Int], stepSizeArray: Array[Double], miniBatchFractionArray: Array[Double]): LogisticRegressionModel =
+	def evaluateAllParameter(trainData: RDD[LabeledPoint],
+		validationData: RDD[LabeledPoint],
+		numIterationsArray: Array[Int],
+		stepSizeArray: Array[Double],
+		miniBatchFractionArray: Array[Double]): LogisticRegressionModel =
 		{
 			val evaluations =
 				for (numIterations <- numIterationsArray; stepSize <- stepSizeArray; miniBatchFraction <- miniBatchFractionArray) yield {
