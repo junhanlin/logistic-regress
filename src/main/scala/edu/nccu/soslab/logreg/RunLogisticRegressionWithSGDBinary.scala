@@ -168,6 +168,7 @@ object RunLogisticRegressionWithSGDBinary {
 				(predictOutput)
 
 		}
+		//結果儲存到書出資料夾
 		val predictRDD = sc.parallelize(predicts);
 		predictRDD.saveAsTextFile(outputDirPath.toString())
 
