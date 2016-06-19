@@ -21,6 +21,7 @@ import org.apache.commons.cli.ParseException
 import org.apache.commons.cli.CommandLine
 import org.apache.commons.cli.HelpFormatter
 import org.apache.commons.cli.PosixParser
+import org.apache.hadoop.fs.Path
 
 object RunLogisticRegressionWithSGDBinary {
 
@@ -32,7 +33,7 @@ object RunLogisticRegressionWithSGDBinary {
 		val options = new Options()
 		options.addOption("s", "single-node", false, "是否為單機模式");
 		options.addOption("t", "param-tune", false, "進行參數調校");
-		options.addOption("i", "input", true, "輸入檔案");
+		options.addOption("i", "input-dir", true, "輸入資料夾");
 		options.addOption("o", "output-dir", true, "輸出資料夾");
 
 		val cmdParser = new PosixParser();
@@ -48,7 +49,7 @@ object RunLogisticRegressionWithSGDBinary {
 		}
 
 		if (!cmdLine.hasOption('i')) {
-			logger.fatal("沒有提供輸入檔案路徑");
+			logger.fatal("沒有提供輸入資料夾");
 			printHelp(options);
 			System.exit(1);
 		}
@@ -57,6 +58,14 @@ object RunLogisticRegressionWithSGDBinary {
 			printHelp(options);
 			System.exit(1);
 		}
+		
+		val trainTSV = new Path(cmdLine.getOptionValue('i'),"train.tsv");
+		val testTSV = new Path(cmdLine.getOptionValue('i'),"test.tsv");
+		val outputDir = new Path(cmdLine.getOptionValue('o'));
+		
+		logger.info("train.tsv 位置:"+trainTSV.toString())
+		logger.info("test.tsv 位置:"+testTSV.toString())
+		logger.info("輸出資料夾位置:"+outputDir)
 
 		val sparkConf = new SparkConf().setAppName("RDF");
 
@@ -67,7 +76,7 @@ object RunLogisticRegressionWithSGDBinary {
 		val sc = new SparkContext(sparkConf)
 		logger.info("RunLogisticRegressionWithSGDBinary")
 		logger.info("==========資料準備階段===============")
-		val (trainData, validationData, testData, categoriesMap) = PrepareData(sc, cmdLine.getOptionValue('i'))
+		val (trainData, validationData, testData, categoriesMap) = PrepareData(sc, trainTSV)
 		trainData.persist();
 		validationData.persist();
 		testData.persist()
@@ -79,7 +88,7 @@ object RunLogisticRegressionWithSGDBinary {
 			val auc = evaluateModel(model, testData)
 			logger.info("使用testata測試最佳模型,結果 AUC:" + auc)
 			logger.info("==========預測資料===============")
-			PredictData(sc, model, categoriesMap,cmdLine.getOptionValue('o'))
+			PredictData(sc, model, categoriesMap,testTSV,outputDir)
 		}
 		else {
 			val model = trainEvaluate(trainData, validationData)
@@ -87,16 +96,19 @@ object RunLogisticRegressionWithSGDBinary {
 			val auc = evaluateModel(model, testData)
 			logger.info("使用testata測試最佳模型,結果 AUC:" + auc)
 			logger.info("==========預測資料===============")
-			PredictData(sc, model, categoriesMap,cmdLine.getOptionValue('o'))
+			PredictData(sc, model, categoriesMap,testTSV,outputDir)
 		}
 
-		trainData.unpersist(); validationData.unpersist(); testData.unpersist()
+		trainData.unpersist(); 
+		validationData.unpersist(); 
+		testData.unpersist()
+		
 	}
 
-	def PrepareData(sc: SparkContext, inputFilePath: String): (RDD[LabeledPoint], RDD[LabeledPoint], RDD[LabeledPoint], Map[String, Int]) = {
+	def PrepareData(sc: SparkContext, dataTSVPath: Path): (RDD[LabeledPoint], RDD[LabeledPoint], RDD[LabeledPoint], Map[String, Int]) = {
 		//----------------------1.匯入轉換資料-------------
 		logger.info("開始匯入資料...")
-		val rawDataWithHeader = sc.textFile(inputFilePath)
+		val rawDataWithHeader = sc.textFile(dataTSVPath.toString())
 		val rawData = rawDataWithHeader.mapPartitionsWithIndex { (idx, iter) => if (idx == 0) iter.drop(1) else iter }
 		val lines = rawData.map(_.split("\t"))
 		logger.info("共計：" + lines.count.toString() + "筆")
@@ -123,11 +135,11 @@ object RunLogisticRegressionWithSGDBinary {
 		return (trainData, validationData, testData, categoriesMap)
 	}
 
-	def PredictData(sc: SparkContext, model: LogisticRegressionModel, categoriesMap: Map[String, Int],outputDirPath : String): Unit = {
+	def PredictData(sc: SparkContext, model: LogisticRegressionModel, categoriesMap: Map[String, Int],testTSVPath : Path,outputDirPath : Path): Unit = {
 
 		//----------------------1.匯入轉換資料-------------
 		logger.info("開始匯入資料...")
-		val rawDataWithHeader = sc.textFile("data/test.tsv")
+		val rawDataWithHeader = sc.textFile(testTSVPath.toString())
 		val rawData = rawDataWithHeader.mapPartitionsWithIndex { (idx, iter) => if (idx == 0) iter.drop(1) else iter }
 		val lines = rawData.map(_.split("\t"))
 		logger.info("共計：" + lines.count.toString() + "筆")
@@ -158,7 +170,7 @@ object RunLogisticRegressionWithSGDBinary {
 
 		}
 		val predictRDD = sc.parallelize(predicts);
-		predictRDD.saveAsTextFile(outputDirPath)
+		predictRDD.saveAsTextFile(outputDirPath.toString())
 
 	}
 	def trainEvaluate(trainData: RDD[LabeledPoint], validationData: RDD[LabeledPoint]): LogisticRegressionModel = {
