@@ -55,3 +55,6 @@ local.properties
 
 # Scala
 .cache-main
+
+# Data output
+data/output/

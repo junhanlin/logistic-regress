@@ -33,6 +33,7 @@ object RunLogisticRegressionWithSGDBinary {
 		options.addOption("s", "single-node", false, "是否為單機模式");
 		options.addOption("t", "param-tune", false, "進行參數調校");
 		options.addOption("i", "input", true, "輸入檔案");
+		options.addOption("o", "output-dir", true, "輸出資料夾");
 
 		val cmdParser = new PosixParser();
 		var cmdLine: CommandLine = null;
@@ -45,26 +46,28 @@ object RunLogisticRegressionWithSGDBinary {
 				System.exit(1);
 			}
 		}
-		
-		if(!cmdLine.hasOption('i')){
+
+		if (!cmdLine.hasOption('i')) {
 			logger.fatal("沒有提供輸入檔案路徑");
 			printHelp(options);
 			System.exit(1);
 		}
-		
-		
+		if (!cmdLine.hasOption('o')) {
+			logger.fatal("沒有提供輸出資料夾");
+			printHelp(options);
+			System.exit(1);
+		}
+
 		val sparkConf = new SparkConf().setAppName("RDF");
-		
-		if(cmdLine.hasOption('s'))
-		{
+
+		if (cmdLine.hasOption('s')) {
 			sparkConf.setMaster("local[4]")
 		}
-		
-		
+
 		val sc = new SparkContext(sparkConf)
 		logger.info("RunLogisticRegressionWithSGDBinary")
 		logger.info("==========資料準備階段===============")
-		val (trainData, validationData, testData, categoriesMap) = PrepareData(sc,cmdLine.getOptionValue('i'))
+		val (trainData, validationData, testData, categoriesMap) = PrepareData(sc, cmdLine.getOptionValue('i'))
 		trainData.persist();
 		validationData.persist();
 		testData.persist()
@@ -76,7 +79,7 @@ object RunLogisticRegressionWithSGDBinary {
 			val auc = evaluateModel(model, testData)
 			logger.info("使用testata測試最佳模型,結果 AUC:" + auc)
 			logger.info("==========預測資料===============")
-			PredictData(sc, model, categoriesMap)
+			PredictData(sc, model, categoriesMap,cmdLine.getOptionValue('o'))
 		}
 		else {
 			val model = trainEvaluate(trainData, validationData)
@@ -84,13 +87,13 @@ object RunLogisticRegressionWithSGDBinary {
 			val auc = evaluateModel(model, testData)
 			logger.info("使用testata測試最佳模型,結果 AUC:" + auc)
 			logger.info("==========預測資料===============")
-			PredictData(sc, model, categoriesMap)
+			PredictData(sc, model, categoriesMap,cmdLine.getOptionValue('o'))
 		}
 
 		trainData.unpersist(); validationData.unpersist(); testData.unpersist()
 	}
 
-	def PrepareData(sc: SparkContext,inputFilePath: String): (RDD[LabeledPoint], RDD[LabeledPoint], RDD[LabeledPoint], Map[String, Int]) = {
+	def PrepareData(sc: SparkContext, inputFilePath: String): (RDD[LabeledPoint], RDD[LabeledPoint], RDD[LabeledPoint], Map[String, Int]) = {
 		//----------------------1.匯入轉換資料-------------
 		logger.info("開始匯入資料...")
 		val rawDataWithHeader = sc.textFile(inputFilePath)
@@ -120,7 +123,7 @@ object RunLogisticRegressionWithSGDBinary {
 		return (trainData, validationData, testData, categoriesMap)
 	}
 
-	def PredictData(sc: SparkContext, model: LogisticRegressionModel, categoriesMap: Map[String, Int]): Unit = {
+	def PredictData(sc: SparkContext, model: LogisticRegressionModel, categoriesMap: Map[String, Int],outputDirPath : String): Unit = {
 
 		//----------------------1.匯入轉換資料-------------
 		logger.info("開始匯入資料...")
@@ -145,12 +148,17 @@ object RunLogisticRegressionWithSGDBinary {
 		val stdScaler = new StandardScaler(withMean = true, withStd = true).fit(featuresRDD)
 		val scaledRDD = labelpointRDD.map { case (labelpoint, url) => (LabeledPoint(labelpoint.label, stdScaler.transform(labelpoint.features)), url) }
 
-		scaledRDD.take(10).map {
+		val predicts = scaledRDD.take(10).map {
 			case (labelpoint, url) =>
 				val predict = model.predict(labelpoint.features)
 				var predictDesc = { predict match { case 0 => "暫時性網頁(ephemeral)"; case 1 => "長青網頁(evergreen)"; } }
-				logger.info(" 網址：  " + url + "==>預測:" + predictDesc)
+				val predictOutput = " 網址：  " + url + "==>預測:" + predictDesc
+				logger.info(predictOutput)
+				(predictOutput)
+
 		}
+		val predictRDD = sc.parallelize(predicts);
+		predictRDD.saveAsTextFile(outputDirPath)
 
 	}
 	def trainEvaluate(trainData: RDD[LabeledPoint], validationData: RDD[LabeledPoint]): LogisticRegressionModel = {
