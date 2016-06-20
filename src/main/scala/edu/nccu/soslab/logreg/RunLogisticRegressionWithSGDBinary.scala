@@ -133,7 +133,7 @@ object RunLogisticRegressionWithSGDBinary {
 	}
 
 	def PredictData(sc: SparkContext, model: LogisticRegressionModel, categoriesMap: Map[String, Int], testTSVPath: Path, outputDirPath: Path): Unit = {
-
+ 
 		//----------------------1.匯入轉換資料-------------
 		logger.info("開始匯入資料...")
 		val rawDataWithHeader = sc.textFile(testTSVPath.toString())
