@@ -149,8 +149,8 @@ object RunLogisticRegressionWithSGDBinary {
 			val categoryIdx = categoriesMap(fields(3))
 			categoryFeaturesArray(categoryIdx) = 1
 			val numericalFeatures = trimmed.slice(4, fields.size)
-				.map(d => if (d == "?") 0.0 else d.toDouble)
-
+				.map(d => if (d == "?") 0.0 else d.toDouble) 
+ 
 			val label = 0
 			val url = trimmed(0)
 			(LabeledPoint(label, Vectors.dense(categoryFeaturesArray ++ numericalFeatures)), url)
