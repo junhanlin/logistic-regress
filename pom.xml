@@ -3,6 +3,7 @@
 	<groupId>edu.nccu.soslab.logreg</groupId>
 	<artifactId>logistic-regress</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
+	
 	<properties>
 		<scala-version>2.10.6</scala-version>
 		<spark-version>1.6.0</spark-version>
